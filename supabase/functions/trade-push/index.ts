@@ -110,15 +110,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update account sync timestamp
+    // Update account sync timestamp + balance
     const nextSync = new Date(Date.now() + 15 * 60_000).toISOString();
-    await supabase.from("broker_accounts").update({
+    const updatePayload: any = {
       last_sync_at: new Date().toISOString(),
       connection_status: "connected",
       last_sync_error: null,
       next_sync_at: nextSync,
       retry_count: 0,
-    } as any).eq("id", body.broker_account_id);
+    };
+    if (body.balance != null && typeof body.balance === "number") {
+      updatePayload.balance = body.balance;
+    }
+    await supabase.from("broker_accounts").update(updatePayload).eq("id", body.broker_account_id);
 
     // Log the sync
     await supabase.from("sync_logs").insert({
