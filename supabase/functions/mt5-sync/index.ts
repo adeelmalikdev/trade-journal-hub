@@ -1,11 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { Agent, fetch as undiciFetch } from "npm:undici@^6";
+import nodeFetch from "npm:node-fetch@3";
+import https from "node:https";
 
-// Use undici with TLS verification disabled for MetaAPI calls
-const tlsAgent = new Agent({ connect: { rejectUnauthorized: false } });
+// Node.js HTTPS agent that skips certificate verification for MetaAPI
+const tlsAgent = new https.Agent({ rejectUnauthorized: false });
 
 function metaFetch(url: string, init?: any): Promise<Response> {
-  return undiciFetch(url, { ...init, dispatcher: tlsAgent }) as unknown as Promise<Response>;
+  return nodeFetch(url, { ...init, agent: tlsAgent }) as unknown as Promise<Response>;
 }
 
 const corsHeaders = {
