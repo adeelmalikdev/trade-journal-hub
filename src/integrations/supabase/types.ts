@@ -127,6 +127,7 @@ export type Database = {
       trades: {
         Row: {
           broker_account_id: string | null
+          broker_trade_id: string | null
           created_at: string | null
           direction: string | null
           emotion: string | null
@@ -146,6 +147,7 @@ export type Database = {
         }
         Insert: {
           broker_account_id?: string | null
+          broker_trade_id?: string | null
           created_at?: string | null
           direction?: string | null
           emotion?: string | null
@@ -165,6 +167,7 @@ export type Database = {
         }
         Update: {
           broker_account_id?: string | null
+          broker_trade_id?: string | null
           created_at?: string | null
           direction?: string | null
           emotion?: string | null
