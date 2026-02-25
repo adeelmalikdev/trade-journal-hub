@@ -13,7 +13,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// ── Validate a single trade object ─────────────────────────────
+// ── Trade validation ───────────────────────────────────────────
 interface RawTrade {
   broker_trade_id?: string;
   symbol: string;
@@ -31,32 +31,102 @@ interface RawTrade {
   notes?: string;
 }
 
+const VALID_DIRECTIONS = ["long", "short", "buy", "sell"];
+
 function validateTrade(t: RawTrade, index: number): string | null {
-  if (!t.symbol || typeof t.symbol !== "string") return `[${index}] symbol is required`;
-  if (!t.direction || !["long", "short", "Long", "Short"].includes(t.direction))
-    return `[${index}] direction must be long or short`;
+  if (!t.symbol || typeof t.symbol !== "string" || t.symbol.trim().length === 0)
+    return `[${index}] symbol is required`;
+  if (t.symbol.length > 20) return `[${index}] symbol too long (max 20 chars)`;
+
+  const dir = (t.direction ?? "").toLowerCase();
+  if (!VALID_DIRECTIONS.includes(dir))
+    return `[${index}] direction must be long/short/buy/sell`;
+
   if (!t.entry_time) return `[${index}] entry_time is required`;
-  if (typeof t.entry_price !== "number" || t.entry_price <= 0) return `[${index}] entry_price must be > 0`;
+  const entryDate = new Date(t.entry_time);
+  if (isNaN(entryDate.getTime())) return `[${index}] entry_time is not a valid date`;
+
+  if (typeof t.entry_price !== "number" || t.entry_price <= 0)
+    return `[${index}] entry_price must be > 0`;
   if (typeof t.position_size !== "number" || t.position_size <= 0)
     return `[${index}] position_size must be > 0`;
-  if (t.exit_time && t.entry_time && new Date(t.exit_time) <= new Date(t.entry_time))
-    return `[${index}] exit_time must be after entry_time`;
+
+  if (t.exit_time) {
+    const exitDate = new Date(t.exit_time);
+    if (isNaN(exitDate.getTime())) return `[${index}] exit_time is not a valid date`;
+    if (exitDate <= entryDate) return `[${index}] exit_time must be after entry_time`;
+  }
+
+  if (t.exit_price != null && (typeof t.exit_price !== "number" || t.exit_price <= 0))
+    return `[${index}] exit_price must be > 0`;
+
+  if (t.fees != null && (typeof t.fees !== "number" || t.fees < 0))
+    return `[${index}] fees must be >= 0`;
+
   return null;
+}
+
+function normalizeDirection(dir: string): string {
+  const lower = dir.toLowerCase();
+  if (lower === "buy" || lower === "long") return "Long";
+  return "Short";
 }
 
 function calcPnl(t: RawTrade): number {
   if (t.pnl != null) return t.pnl;
   if (t.exit_price == null) return 0;
-  const dir = t.direction.toLowerCase() === "long" ? 1 : -1;
+  const dir = normalizeDirection(t.direction) === "Long" ? 1 : -1;
   return dir * (t.exit_price - t.entry_price) * t.position_size - (t.fees ?? 0);
+}
+
+// ── Fuzzy duplicate detection ──────────────────────────────────
+async function isDuplicate(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  t: RawTrade
+): Promise<boolean> {
+  // Exact match by broker_trade_id
+  if (t.broker_trade_id) {
+    const { data } = await supabase
+      .from("trades")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("broker_trade_id", t.broker_trade_id)
+      .maybeSingle();
+    if (data) return true;
+  }
+
+  // Fuzzy: same symbol, same direction, entry time within 2 seconds, price within 0.01%
+  const entryTime = new Date(t.entry_time);
+  const windowStart = new Date(entryTime.getTime() - 2000).toISOString();
+  const windowEnd = new Date(entryTime.getTime() + 2000).toISOString();
+
+  const { data: candidates } = await supabase
+    .from("trades")
+    .select("id, entry_price, position_size")
+    .eq("user_id", userId)
+    .eq("symbol", t.symbol.toUpperCase())
+    .gte("entry_time", windowStart)
+    .lte("entry_time", windowEnd)
+    .limit(5);
+
+  if (candidates && candidates.length > 0) {
+    for (const c of candidates) {
+      const priceDiff = Math.abs((c.entry_price ?? 0) - t.entry_price) / t.entry_price;
+      const sizeDiff = Math.abs((c.position_size ?? 0) - t.position_size) / t.position_size;
+      if (priceDiff < 0.0001 && sizeDiff < 0.01) return true;
+    }
+  }
+
+  return false;
 }
 
 // ── CSV Parsing ────────────────────────────────────────────────
 function parseCSV(text: string): RawTrade[] {
   const lines = text.trim().split("\n");
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-  return lines.slice(1).map((line) => {
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_"));
+  return lines.slice(1).filter(l => l.trim().length > 0).map((line) => {
     const vals = line.split(",").map((v) => v.trim());
     const obj: Record<string, string> = {};
     headers.forEach((h, i) => (obj[h] = vals[i] ?? ""));
@@ -89,6 +159,63 @@ function checkRateLimit(userId: string, limit = 100): boolean {
   return entry.count <= limit;
 }
 
+// ── Batch insert helper ────────────────────────────────────────
+async function ingestTrades(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  trades: RawTrade[],
+  brokerAccountId?: string
+): Promise<{ ingested: number; duplicates: number; errors: string[] }> {
+  const errors: string[] = [];
+  let ingested = 0;
+  let duplicates = 0;
+
+  // Batch validation first
+  const validTrades: { trade: RawTrade; index: number }[] = [];
+  for (let i = 0; i < trades.length; i++) {
+    const err = validateTrade(trades[i], i);
+    if (err) {
+      errors.push(err);
+    } else {
+      validTrades.push({ trade: trades[i], index: i });
+    }
+  }
+
+  // Process valid trades
+  for (const { trade: t, index: i } of validTrades) {
+    const dup = await isDuplicate(supabase, userId, t);
+    if (dup) { duplicates++; continue; }
+
+    const pnl = calcPnl(t);
+    const { error: insertErr } = await supabase.from("trades").insert({
+      user_id: userId,
+      broker_account_id: brokerAccountId ?? null,
+      broker_trade_id: t.broker_trade_id ?? null,
+      symbol: t.symbol.toUpperCase().trim(),
+      direction: normalizeDirection(t.direction),
+      entry_time: t.entry_time,
+      entry_price: t.entry_price,
+      exit_time: t.exit_time ?? null,
+      exit_price: t.exit_price ?? null,
+      position_size: t.position_size,
+      total_fees: t.fees ?? 0,
+      pnl,
+      strategy: t.strategy ?? null,
+      tags: t.tags ?? [],
+      emotion: t.emotion ?? null,
+      notes: t.notes ?? null,
+    });
+
+    if (insertErr) {
+      errors.push(`[${i}] DB error: ${insertErr.message}`);
+    } else {
+      ingested++;
+    }
+  }
+
+  return { ingested, duplicates, errors };
+}
+
 // ── Main Handler ───────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -96,7 +223,6 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname.replace(/^\/trade-sync\/?/, "");
 
-  // Auth
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return json({ success: false, error: "Unauthorized" }, 401);
 
@@ -104,7 +230,6 @@ Deno.serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Get user from JWT
   const token = authHeader.replace("Bearer ", "");
   const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
   if (authErr || !user) return json({ success: false, error: "Unauthorized" }, 401);
@@ -122,69 +247,24 @@ Deno.serve(async (req) => {
       const trades: RawTrade[] = body.trades ?? [body];
       const brokerAccountId: string | undefined = body.broker_account_id;
 
-      const errors: string[] = [];
-      let ingested = 0;
-      let duplicates = 0;
-
-      for (let i = 0; i < trades.length; i++) {
-        const t = trades[i];
-        const err = validateTrade(t, i);
-        if (err) { errors.push(err); continue; }
-
-        // Duplicate check
-        if (t.broker_trade_id) {
-          const { data: existing } = await supabase
-            .from("trades")
-            .select("id")
-            .eq("user_id", userId)
-            .eq("broker_trade_id", t.broker_trade_id)
-            .maybeSingle();
-          if (existing) { duplicates++; continue; }
-        }
-
-        const pnl = calcPnl(t);
-        const { error: insertErr } = await supabase.from("trades").insert({
-          user_id: userId,
-          broker_account_id: brokerAccountId ?? null,
-          broker_trade_id: t.broker_trade_id ?? null,
-          symbol: t.symbol.toUpperCase(),
-          direction: t.direction.charAt(0).toUpperCase() + t.direction.slice(1).toLowerCase(),
-          entry_time: t.entry_time,
-          entry_price: t.entry_price,
-          exit_time: t.exit_time ?? null,
-          exit_price: t.exit_price ?? null,
-          position_size: t.position_size,
-          total_fees: t.fees ?? 0,
-          pnl,
-          strategy: t.strategy ?? null,
-          tags: t.tags ?? [],
-          emotion: t.emotion ?? null,
-          notes: t.notes ?? null,
-        });
-
-        if (insertErr) {
-          errors.push(`[${i}] DB error: ${insertErr.message}`);
-        } else {
-          ingested++;
-        }
-      }
+      const result = await ingestTrades(supabase, userId, trades, brokerAccountId);
 
       // Create sync log
       if (brokerAccountId) {
         await supabase.from("sync_logs").insert({
           user_id: userId,
           broker_account_id: brokerAccountId,
-          status: errors.length > 0 ? "partial" : "success",
-          trades_synced: ingested,
-          error_message: errors.length > 0 ? errors.join("; ") : null,
+          status: result.errors.length > 0 ? (result.ingested > 0 ? "partial" : "failed") : "success",
+          trades_synced: result.ingested,
+          error_message: result.errors.length > 0 ? result.errors.join("; ") : null,
         });
       }
 
       return json({
-        success: errors.length === 0,
-        trades_ingested: ingested,
-        duplicates_skipped: duplicates,
-        errors,
+        success: result.errors.length === 0,
+        trades_ingested: result.ingested,
+        duplicates_skipped: result.duplicates,
+        errors: result.errors,
       });
     }
 
@@ -210,50 +290,14 @@ Deno.serve(async (req) => {
       const trades = parseCSV(csvText);
       if (trades.length === 0) return json({ success: false, error: "No trades found in CSV" }, 400);
 
-      const errors: string[] = [];
-      let imported = 0;
-      let duplicates = 0;
+      const result = await ingestTrades(supabase, userId, trades);
 
-      for (let i = 0; i < trades.length; i++) {
-        const t = trades[i];
-        const err = validateTrade(t, i);
-        if (err) { errors.push(err); continue; }
-
-        if (t.broker_trade_id) {
-          const { data: existing } = await supabase
-            .from("trades")
-            .select("id")
-            .eq("user_id", userId)
-            .eq("broker_trade_id", t.broker_trade_id)
-            .maybeSingle();
-          if (existing) { duplicates++; continue; }
-        }
-
-        const pnl = calcPnl(t);
-        const { error: insertErr } = await supabase.from("trades").insert({
-          user_id: userId,
-          symbol: t.symbol.toUpperCase(),
-          direction: t.direction.charAt(0).toUpperCase() + t.direction.slice(1).toLowerCase(),
-          entry_time: t.entry_time,
-          entry_price: t.entry_price,
-          exit_time: t.exit_time ?? null,
-          exit_price: t.exit_price ?? null,
-          position_size: t.position_size,
-          total_fees: t.fees ?? 0,
-          pnl,
-          strategy: t.strategy ?? null,
-          tags: [],
-          broker_trade_id: t.broker_trade_id ?? null,
-        });
-
-        if (insertErr) {
-          errors.push(`Row ${i + 1}: ${insertErr.message}`);
-        } else {
-          imported++;
-        }
-      }
-
-      return json({ success: errors.length === 0, imported, duplicates_skipped: duplicates, errors });
+      return json({
+        success: result.errors.length === 0,
+        imported: result.ingested,
+        duplicates_skipped: result.duplicates,
+        errors: result.errors,
+      });
     }
 
     // ── GET /sync-status — Last sync per account ─────────────

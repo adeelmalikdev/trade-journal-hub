@@ -50,7 +50,6 @@ Deno.serve(async (req) => {
 
     const results: Array<{ account_id: string; status: string; trades?: number; error?: string }> = [];
 
-    // Process accounts concurrently (up to MAX_CONCURRENT)
     await Promise.all(
       dueAccounts.map(async (account) => {
         const accountId = account.id;
@@ -72,13 +71,31 @@ Deno.serve(async (req) => {
           .eq("id", accountId);
 
         try {
-          // ── Simulated broker sync ──
-          // In production, this would authenticate with the broker API,
-          // fetch trades since last_sync_at, and ingest them.
-          const startTime = Date.now();
-          await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
-          const tradesCount = Math.floor(Math.random() * 15);
-          const executionTime = Date.now() - startTime;
+          let tradesCount = 0;
+
+          // Check if account has MetaAPI provisioned
+          if ((account as any).meta_api_account_id) {
+            // Real MT5 sync via mt5-sync edge function
+            const syncRes = await fetch(`${supabaseUrl}/functions/v1/mt5-sync/fetch-trades`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${serviceKey}`,
+              },
+              body: JSON.stringify({
+                broker_account_id: accountId,
+                since: account.last_sync_at,
+              }),
+            });
+
+            const syncData = await syncRes.json();
+            if (!syncRes.ok) throw new Error(syncData.error || "MT5 sync failed");
+            tradesCount = syncData.trades_ingested ?? 0;
+          } else {
+            // Simulated sync for non-MT5 accounts (placeholder)
+            await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
+            tradesCount = 0; // No real trades from simulated sync
+          }
 
           // Update account: success
           const nextSync = new Date(
@@ -107,13 +124,12 @@ Deno.serve(async (req) => {
           });
 
           results.push({ account_id: accountId, status: "success", trades: tradesCount });
-          console.log(`Sync success for ${accountId}: ${tradesCount} trades in ${executionTime}ms`);
+          console.log(`Sync success for ${accountId}: ${tradesCount} trades`);
         } catch (syncErr: unknown) {
           const errMsg = syncErr instanceof Error ? syncErr.message : "Unknown error";
           const newRetryCount = (account.retry_count ?? 0) + 1;
           const isMaxRetries = newRetryCount >= MAX_RETRIES;
 
-          // Schedule retry or mark as error
           const nextSync = isMaxRetries
             ? null
             : new Date(Date.now() + RETRY_DELAY_MIN * 60_000).toISOString();
@@ -129,7 +145,6 @@ Deno.serve(async (req) => {
             })
             .eq("id", accountId);
 
-          // Log failure
           await supabase.from("sync_logs").insert({
             broker_account_id: accountId,
             user_id: userId,
