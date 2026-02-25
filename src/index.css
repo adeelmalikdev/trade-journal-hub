@@ -34,11 +34,6 @@
 
     --radius: 0.5rem;
 
-    --positive: 152 69% 31%;
-    --positive-foreground: 0 0% 100%;
-    --negative: 0 84% 60%;
-    --negative-foreground: 0 0% 100%;
-
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 220 10% 26%;
     --sidebar-primary: 217 91% 50%;
@@ -77,11 +72,6 @@
     --border: 220 20% 18%;
     --input: 220 20% 18%;
     --ring: 217 91% 55%;
-
-    --positive: 152 69% 46%;
-    --positive-foreground: 0 0% 100%;
-    --negative: 0 62% 50%;
-    --negative-foreground: 0 0% 100%;
 
     --sidebar-background: 224 30% 8%;
     --sidebar-foreground: 210 40% 90%;
