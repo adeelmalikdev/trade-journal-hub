@@ -149,7 +149,7 @@ def fetch_trades(days_back=DAYS_BACK):
     return trades
 
 
-def push_trades(token, trades):
+def push_trades(token, trades, account_balance=None):
     """Push matched trades to the journal app."""
     if not trades:
         print("ℹ️  No trades to push")
@@ -174,6 +174,7 @@ def push_trades(token, trades):
             json={
                 "broker_account_id": BROKER_ACCOUNT_ID,
                 "trades": batch,
+                "balance": account_balance,
             },
         )
 
@@ -206,7 +207,7 @@ def main():
         trades = fetch_trades()
 
         # Step 4: Push trades to the app
-        push_trades(token, trades)
+        push_trades(token, trades, account_balance=account_info.balance)
     finally:
         mt5.shutdown()
         print("📡 MT5 connection closed")
