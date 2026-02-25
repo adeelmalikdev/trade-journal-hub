@@ -19,6 +19,7 @@ export type Database = {
           account_number: string
           account_type: string
           api_key_masked: string | null
+          auto_sync_enabled: boolean | null
           balance: number | null
           broker_name: string
           connection_status: string
@@ -26,13 +27,18 @@ export type Database = {
           id: string
           is_active: boolean | null
           last_sync_at: string | null
+          last_sync_error: string | null
+          next_sync_at: string | null
+          retry_count: number | null
           sync_frequency: number
+          sync_in_progress: boolean | null
           user_id: string
         }
         Insert: {
           account_number: string
           account_type?: string
           api_key_masked?: string | null
+          auto_sync_enabled?: boolean | null
           balance?: number | null
           broker_name: string
           connection_status?: string
@@ -40,13 +46,18 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_sync_at?: string | null
+          last_sync_error?: string | null
+          next_sync_at?: string | null
+          retry_count?: number | null
           sync_frequency?: number
+          sync_in_progress?: boolean | null
           user_id: string
         }
         Update: {
           account_number?: string
           account_type?: string
           api_key_masked?: string | null
+          auto_sync_enabled?: boolean | null
           balance?: number | null
           broker_name?: string
           connection_status?: string
@@ -54,7 +65,11 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_sync_at?: string | null
+          last_sync_error?: string | null
+          next_sync_at?: string | null
+          retry_count?: number | null
           sync_frequency?: number
+          sync_in_progress?: boolean | null
           user_id?: string
         }
         Relationships: []

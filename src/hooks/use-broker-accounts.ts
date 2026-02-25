@@ -15,6 +15,11 @@ export interface BrokerAccount {
   connection_status: string;
   sync_frequency: number;
   last_sync_at: string | null;
+  last_sync_error: string | null;
+  next_sync_at: string | null;
+  sync_in_progress: boolean | null;
+  auto_sync_enabled: boolean | null;
+  retry_count: number | null;
   balance: number | null;
   is_active: boolean | null;
   created_at: string | null;
@@ -49,7 +54,7 @@ export function useBrokerAccountsFull() {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as BrokerAccount[];
+      return data as unknown as BrokerAccount[];
     },
     staleTime: STALE_TIME,
     enabled: !!user,
@@ -64,6 +69,7 @@ export function useBrokerAccountsFull() {
       api_secret: string;
     }) => {
       const masked = maskValue(input.api_key);
+      const nextSync = new Date(Date.now() + 15 * 60_000).toISOString();
       const { data, error } = await supabase
         .from("broker_accounts")
         .insert({
@@ -74,7 +80,9 @@ export function useBrokerAccountsFull() {
           api_key_masked: masked,
           connection_status: "connected",
           is_active: true,
-        })
+          auto_sync_enabled: true,
+          next_sync_at: nextSync,
+        } as any)
         .select()
         .single();
       if (error) throw error;
@@ -93,7 +101,7 @@ export function useBrokerAccountsFull() {
     mutationFn: async ({ id, ...updates }: Partial<BrokerAccount> & { id: string }) => {
       const { data, error } = await supabase
         .from("broker_accounts")
-        .update(updates)
+        .update(updates as any)
         .eq("id", id)
         .select()
         .single();
@@ -113,7 +121,7 @@ export function useBrokerAccountsFull() {
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from("broker_accounts")
-        .update({ connection_status: "disconnected", is_active: false })
+        .update({ connection_status: "disconnected", is_active: false, auto_sync_enabled: false } as any)
         .eq("id", id);
       if (error) throw error;
     },
@@ -142,16 +150,30 @@ export function useBrokerAccountsFull() {
 
   const syncAccount = useMutation({
     mutationFn: async (id: string) => {
-      // Simulate sync - in the future this would call a backend function
+      // Mark as syncing
+      await supabase
+        .from("broker_accounts")
+        .update({ sync_in_progress: true, connection_status: "syncing" } as any)
+        .eq("id", id);
+
+      // Simulate sync
       await new Promise((r) => setTimeout(r, 2000));
       const tradesCount = Math.floor(Math.random() * 20) + 1;
-      // Update last_sync_at
+
+      const nextSync = new Date(Date.now() + 15 * 60_000).toISOString();
       const { error: updateErr } = await supabase
         .from("broker_accounts")
-        .update({ last_sync_at: new Date().toISOString(), connection_status: "connected" })
+        .update({
+          last_sync_at: new Date().toISOString(),
+          connection_status: "connected",
+          sync_in_progress: false,
+          last_sync_error: null,
+          next_sync_at: nextSync,
+          retry_count: 0,
+        } as any)
         .eq("id", id);
       if (updateErr) throw updateErr;
-      // Insert sync log
+
       const { error: logErr } = await supabase
         .from("sync_logs")
         .insert({
@@ -173,6 +195,31 @@ export function useBrokerAccountsFull() {
     },
   });
 
+  const toggleAutoSync = useMutation({
+    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      const updates: any = { auto_sync_enabled: enabled };
+      if (enabled) {
+        updates.next_sync_at = new Date(Date.now() + 15 * 60_000).toISOString();
+        updates.retry_count = 0;
+        updates.last_sync_error = null;
+      } else {
+        updates.next_sync_at = null;
+      }
+      const { error } = await supabase
+        .from("broker_accounts")
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: key });
+      toast({ title: "Auto-sync updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update auto-sync", description: err.message, variant: "destructive" });
+    },
+  });
+
   return {
     accounts: query.data ?? [],
     loading: query.isLoading,
@@ -182,6 +229,7 @@ export function useBrokerAccountsFull() {
     disconnectAccount,
     deleteAccount,
     syncAccount,
+    toggleAutoSync,
   };
 }
 
@@ -196,7 +244,7 @@ export function useSyncLogs(brokerAccountId: string | null) {
         .select("*")
         .eq("broker_account_id", brokerAccountId!)
         .order("synced_at", { ascending: false })
-        .limit(5);
+        .limit(10);
       if (error) throw error;
       return data as SyncLog[];
     },
