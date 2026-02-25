@@ -17,26 +17,44 @@ export type Database = {
       broker_accounts: {
         Row: {
           account_number: string
+          account_type: string
+          api_key_masked: string | null
+          balance: number | null
           broker_name: string
+          connection_status: string
           created_at: string | null
           id: string
           is_active: boolean | null
+          last_sync_at: string | null
+          sync_frequency: number
           user_id: string
         }
         Insert: {
           account_number: string
+          account_type?: string
+          api_key_masked?: string | null
+          balance?: number | null
           broker_name: string
+          connection_status?: string
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          last_sync_at?: string | null
+          sync_frequency?: number
           user_id: string
         }
         Update: {
           account_number?: string
+          account_type?: string
+          api_key_masked?: string | null
+          balance?: number | null
           broker_name?: string
+          connection_status?: string
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          last_sync_at?: string | null
+          sync_frequency?: number
           user_id?: string
         }
         Relationships: []
@@ -67,6 +85,44 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      sync_logs: {
+        Row: {
+          broker_account_id: string
+          error_message: string | null
+          id: string
+          status: string
+          synced_at: string
+          trades_synced: number | null
+          user_id: string
+        }
+        Insert: {
+          broker_account_id: string
+          error_message?: string | null
+          id?: string
+          status?: string
+          synced_at?: string
+          trades_synced?: number | null
+          user_id: string
+        }
+        Update: {
+          broker_account_id?: string
+          error_message?: string | null
+          id?: string
+          status?: string
+          synced_at?: string
+          trades_synced?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_logs_broker_account_id_fkey"
+            columns: ["broker_account_id"]
+            isOneToOne: false
+            referencedRelation: "broker_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       trades: {
         Row: {
