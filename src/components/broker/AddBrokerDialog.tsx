@@ -18,6 +18,8 @@ const BROKERS = [
   "Other",
 ];
 
+const MT5_BROKERS = ["MetaTrader 5 (MT5)"];
+
 export function AddBrokerDialog() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
@@ -28,6 +30,9 @@ export function AddBrokerDialog() {
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [accountType, setAccountType] = useState("live");
+  const [brokerServer, setBrokerServer] = useState("");
+
+  const isMT5 = MT5_BROKERS.includes(broker);
 
   const reset = () => {
     setStep(1);
@@ -36,14 +41,22 @@ export function AddBrokerDialog() {
     setApiKey("");
     setApiSecret("");
     setAccountType("live");
+    setBrokerServer("");
   };
 
   const canProceedStep1 = broker.length > 0;
-  const canProceedStep2 = accountNumber.length > 0 && apiKey.length > 0 && apiSecret.length > 0;
+  const canProceedStep2 = accountNumber.length > 0 && apiKey.length > 0 && apiSecret.length > 0 && (!isMT5 || brokerServer.length > 0);
 
   const handleConnect = () => {
     createAccount.mutate(
-      { broker_name: broker, account_number: accountNumber, api_key: apiKey, api_secret: apiSecret, account_type: accountType },
+      {
+        broker_name: broker,
+        account_number: accountNumber,
+        api_key: apiKey,
+        api_secret: apiSecret,
+        account_type: accountType,
+        broker_server: isMT5 ? brokerServer : undefined,
+      },
       {
         onSuccess: () => {
           setOpen(false);
@@ -111,13 +124,20 @@ export function AddBrokerDialog() {
               <Input id="accNum" placeholder="e.g. 12345678" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="apiKey">API Key / Login</Label>
-              <Input id="apiKey" type="password" placeholder="Enter API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              <Label htmlFor="apiKey">{isMT5 ? "MT5 Login" : "API Key / Login"}</Label>
+              <Input id="apiKey" type="password" placeholder={isMT5 ? "Enter MT5 login number" : "Enter API key"} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="apiSecret">API Secret / Password</Label>
-              <Input id="apiSecret" type="password" placeholder="Enter API secret" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} />
+              <Label htmlFor="apiSecret">{isMT5 ? "MT5 Password" : "API Secret / Password"}</Label>
+              <Input id="apiSecret" type="password" placeholder={isMT5 ? "Enter MT5 password" : "Enter API secret"} value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} />
             </div>
+            {isMT5 && (
+              <div className="space-y-2">
+                <Label htmlFor="server">MT5 Server</Label>
+                <Input id="server" placeholder="e.g. ICMarketsSC-Demo" value={brokerServer} onChange={(e) => setBrokerServer(e.target.value)} />
+                <p className="text-xs text-muted-foreground">Find this in MT5 → File → Login to Trade Account</p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Account Type</Label>
               <RadioGroup value={accountType} onValueChange={setAccountType} className="flex gap-4">
@@ -149,11 +169,19 @@ export function AddBrokerDialog() {
               <div className="flex justify-between"><span className="text-muted-foreground">Broker</span><span className="font-medium">{broker}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Account</span><span className="font-medium">...{accountNumber.slice(-4)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Type</span><span className="font-medium capitalize">{accountType}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">API Key</span><span className="font-mono text-xs">{maskStr(apiKey)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">{isMT5 ? "Login" : "API Key"}</span><span className="font-mono text-xs">{maskStr(apiKey)}</span></div>
+              {isMT5 && brokerServer && (
+                <div className="flex justify-between"><span className="text-muted-foreground">Server</span><span className="font-medium">{brokerServer}</span></div>
+              )}
             </div>
             <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
               <ShieldCheck className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-              <span>Your API credentials are encrypted and stored securely. We never store plaintext passwords.</span>
+              <span>
+                {isMT5
+                  ? "Your MT5 credentials will be securely sent to MetaAPI for trade synchronization. Only read-only access is used."
+                  : "Your API credentials are encrypted and stored securely. We never store plaintext passwords."
+                }
+              </span>
             </div>
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep(2)}>
@@ -161,7 +189,7 @@ export function AddBrokerDialog() {
               </Button>
               <Button onClick={handleConnect} disabled={createAccount.isPending}>
                 {createAccount.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-                Connect
+                {isMT5 ? "Connect MT5" : "Connect"}
               </Button>
             </div>
           </div>
