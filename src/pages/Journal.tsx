@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, BookOpen, ArrowUpDown, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, BookOpen, ArrowUpDown, Pencil, Trash2, ChevronLeft, ChevronRight, Upload } from "lucide-react";
+import { CSVImportDialog } from "@/components/journal/CSVImportDialog";
 import { cn } from "@/lib/utils";
 
 type SortKey = "symbol" | "entry_time" | "pnl" | "created_at";
@@ -23,6 +24,7 @@ export default function Journal() {
 
   // Dialogs
   const [addOpen, setAddOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
   const [editData, setEditData] = useState<(TradeFormData & { id: string }) | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -132,9 +134,14 @@ export default function Journal() {
           <h1 className="text-3xl font-bold tracking-tight">Trade Journal</h1>
           <p className="text-muted-foreground">Review and analyze your trading history</p>
         </div>
-        <Button onClick={() => setAddOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Add Trade
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCsvOpen(true)}>
+            <Upload className="h-4 w-4 mr-1" /> Import CSV
+          </Button>
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Add Trade
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -281,6 +288,7 @@ export default function Journal() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <CSVImportDialog open={csvOpen} onOpenChange={setCsvOpen} />
     </div>
   );
 }
