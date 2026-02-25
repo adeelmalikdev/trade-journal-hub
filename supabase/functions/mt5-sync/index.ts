@@ -1,9 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { fetch as nodeFetch } from "npm:undici@^6";
+import { Agent, fetch as undiciFetch } from "npm:undici@^6";
 
-// Use Node.js-based fetch for MetaAPI to avoid Deno TLS issues
-function metaFetch(url: string, init?: RequestInit): Promise<Response> {
-  return nodeFetch(url, init as any) as unknown as Promise<Response>;
+// Use undici with TLS verification disabled for MetaAPI calls
+const tlsAgent = new Agent({ connect: { rejectUnauthorized: false } });
+
+function metaFetch(url: string, init?: any): Promise<Response> {
+  return undiciFetch(url, { ...init, dispatcher: tlsAgent }) as unknown as Promise<Response>;
 }
 
 const corsHeaders = {
@@ -36,7 +38,9 @@ async function provisionAccount(
     headers: { "Content-Type": "application/json", "auth-token": token },
     body: JSON.stringify({ name, login, password, server, platform, type: "cloud", magic: 0 }),
   });
-  const data = await res.json();
+  const text = await res.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch { return { error: `MetaAPI returned non-JSON (${res.status}): ${text.slice(0, 200)}` }; }
   if (!res.ok) return { error: data.message || `MetaAPI error: ${res.status}` };
   return { id: data.id };
 }
