@@ -1,63 +1,17 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBrokerAccounts } from "@/hooks/use-api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
 import { Trash2, Plus } from "lucide-react";
 
 export default function SettingsPage() {
   const { user, signOut } = useAuth();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const { accounts: brokerAccounts, loading: isLoading, createAccount, deleteAccount } = useBrokerAccounts();
   const [brokerName, setBrokerName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
-
-  const { data: brokerAccounts = [], isLoading } = useQuery({
-    queryKey: ["broker_accounts"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("broker_accounts")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const createBroker = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("broker_accounts").insert({
-        user_id: user!.id,
-        broker_name: brokerName,
-        account_number: accountNumber,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["broker_accounts"] });
-      setBrokerName("");
-      setAccountNumber("");
-      toast({ title: "Broker account added" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const deleteBroker = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("broker_accounts").delete().eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["broker_accounts"] });
-      toast({ title: "Broker account removed" });
-    },
-  });
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -76,7 +30,10 @@ export default function SettingsPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              createBroker.mutate();
+              createAccount.mutate(
+                { broker_name: brokerName, account_number: accountNumber },
+                { onSuccess: () => { setBrokerName(""); setAccountNumber(""); } }
+              );
             }}
             className="flex flex-col sm:flex-row gap-3"
           >
@@ -88,7 +45,7 @@ export default function SettingsPage() {
               <Label htmlFor="accountNum" className="sr-only">Account Number</Label>
               <Input id="accountNum" placeholder="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required />
             </div>
-            <Button type="submit" disabled={createBroker.isPending} className="shrink-0">
+            <Button type="submit" disabled={createAccount.isPending} className="shrink-0">
               <Plus className="h-4 w-4 mr-1" /> Add
             </Button>
           </form>
@@ -105,7 +62,7 @@ export default function SettingsPage() {
                     <p className="font-medium text-sm">{b.broker_name}</p>
                     <p className="text-xs text-muted-foreground">{b.account_number}</p>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => deleteBroker.mutate(b.id)}>
+                  <Button variant="ghost" size="icon" onClick={() => deleteAccount.mutate(b.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
