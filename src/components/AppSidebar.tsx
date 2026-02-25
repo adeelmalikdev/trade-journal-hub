@@ -1,4 +1,4 @@
-import { LayoutDashboard, BookOpen, Cable, Settings } from "lucide-react";
+import { LayoutDashboard, BookOpen, Cable, Settings, BarChart3 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -16,6 +16,7 @@ import { TrendingUp } from "lucide-react";
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Trade Journal", url: "/journal", icon: BookOpen },
+  { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Brokers", url: "/brokers", icon: Cable },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
