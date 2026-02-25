@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,10 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { RefreshCw, Unplug, Loader2, CheckCircle2, XCircle, X, AlertTriangle, Clock } from "lucide-react";
+import { RefreshCw, Unplug, Loader2, CheckCircle2, XCircle, X, AlertTriangle, Clock, BarChart3, TrendingUp, TrendingDown, DollarSign, Activity } from "lucide-react";
 import type { BrokerAccount, SyncLog } from "@/hooks/use-broker-accounts";
 import { useSyncLogs, useBrokerAccountsFull } from "@/hooks/use-broker-accounts";
+import { useAccountSummary, type AccountSummaryData } from "@/hooks/use-account-summary";
 
 interface Props {
   account: BrokerAccount;
@@ -42,16 +46,145 @@ function StatusBadge({ status }: { status: string }) {
   }
 }
 
+function MetricCard({ label, value, icon: Icon, color }: { label: string; value: string; icon: any; color?: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 space-y-1">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <Icon className={`h-3.5 w-3.5 ${color || ""}`} />
+        <span className="text-[10px] uppercase tracking-wide font-medium">{label}</span>
+      </div>
+      <p className={`text-sm font-semibold ${color || ""}`}>{value}</p>
+    </div>
+  );
+}
+
+function AccountSummaryView({ data }: { data: AccountSummaryData }) {
+  const { account, analytics, open_positions, trade_history } = data;
+  const fmt = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pct = (v: number) => `${v.toFixed(1)}%`;
+
+  return (
+    <Tabs defaultValue="overview" className="space-y-3">
+      <TabsList className="grid w-full grid-cols-3 h-8">
+        <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
+        <TabsTrigger value="positions" className="text-xs">Positions</TabsTrigger>
+        <TabsTrigger value="analytics" className="text-xs">Analytics</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="overview" className="space-y-3 mt-0">
+        <div className="grid grid-cols-2 gap-2">
+          <MetricCard label="Balance" value={`${account.currency} ${fmt(account.balance)}`} icon={DollarSign} />
+          <MetricCard label="Equity" value={`${account.currency} ${fmt(account.equity)}`} icon={DollarSign} />
+          <MetricCard label="Margin" value={`${account.currency} ${fmt(account.margin)}`} icon={Activity} />
+          <MetricCard label="Free Margin" value={`${account.currency} ${fmt(account.free_margin)}`} icon={Activity} />
+          <MetricCard label="Leverage" value={`1:${account.leverage}`} icon={TrendingUp} />
+          {account.margin_level != null && (
+            <MetricCard label="Margin Level" value={pct(account.margin_level)} icon={BarChart3} />
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground space-y-0.5">
+          <p>Server: {account.server} • Platform: {account.platform}</p>
+          <p>Generated: {format(new Date(data.generated_at), "MMM d, h:mm:ss a")}</p>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="positions" className="space-y-2 mt-0">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">{open_positions.count} open position{open_positions.count !== 1 ? "s" : ""}</span>
+          <span className={open_positions.total_floating_pnl >= 0 ? "text-gain font-medium" : "text-loss font-medium"}>
+            Floating: {fmt(open_positions.total_floating_pnl)}
+          </span>
+        </div>
+        {open_positions.positions.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-4">No open positions</p>
+        ) : (
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {open_positions.positions.map((pos) => (
+              <div key={pos.id} className="rounded-md border border-border px-3 py-2 text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant={pos.type === "Buy" ? "default" : "secondary"} className="text-[9px] px-1.5 py-0">
+                      {pos.type}
+                    </Badge>
+                    <span className="font-medium">{pos.symbol}</span>
+                    <span className="text-muted-foreground">{pos.volume} lots</span>
+                  </div>
+                  <span className={pos.floating_pnl >= 0 ? "text-gain font-medium" : "text-loss font-medium"}>
+                    {pos.floating_pnl >= 0 ? "+" : ""}{fmt(pos.floating_pnl)}
+                  </span>
+                </div>
+                <div className="flex gap-3 text-muted-foreground">
+                  <span>Entry: {pos.entry_price}</span>
+                  <span>Current: {pos.current_price}</span>
+                  {pos.stop_loss && <span>SL: {pos.stop_loss}</span>}
+                  {pos.take_profit && <span>TP: {pos.take_profit}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+
+      <TabsContent value="analytics" className="space-y-3 mt-0">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{analytics.totalTrades} trades analyzed</span>
+          <span>{trade_history.period.from.slice(0, 10)} → {trade_history.period.to.slice(0, 10)}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <MetricCard label="Net P&L" value={fmt(analytics.netPnL)} icon={DollarSign}
+            color={analytics.netPnL >= 0 ? "text-gain" : "text-loss"} />
+          <MetricCard label="Win Rate" value={pct(analytics.winRate)} icon={TrendingUp}
+            color={analytics.winRate >= 50 ? "text-gain" : "text-loss"} />
+          <MetricCard label="Profit Factor" value={analytics.profitFactor.toFixed(2)} icon={BarChart3}
+            color={analytics.profitFactor >= 1 ? "text-gain" : "text-loss"} />
+          <MetricCard label="Max Drawdown" value={fmt(analytics.maxDrawdown)} icon={TrendingDown} color="text-loss" />
+          <MetricCard label="Avg Win" value={fmt(analytics.avgWin)} icon={TrendingUp} color="text-gain" />
+          <MetricCard label="Avg Loss" value={fmt(analytics.avgLoss)} icon={TrendingDown} color="text-loss" />
+          <MetricCard label="Largest Win" value={fmt(analytics.largestWin)} icon={TrendingUp} color="text-gain" />
+          <MetricCard label="Largest Loss" value={fmt(analytics.largestLoss)} icon={TrendingDown} color="text-loss" />
+          <MetricCard label="Risk:Reward" value={analytics.riskRewardRatio.toFixed(2)} icon={Activity} />
+          <MetricCard label="Avg Trade" value={fmt(analytics.avgTradePnL)} icon={DollarSign}
+            color={analytics.avgTradePnL >= 0 ? "text-gain" : "text-loss"} />
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="rounded-md border border-border p-2">
+            <p className="text-gain font-semibold">{analytics.winningTrades}</p>
+            <p className="text-muted-foreground">Wins</p>
+          </div>
+          <div className="rounded-md border border-border p-2">
+            <p className="text-loss font-semibold">{analytics.losingTrades}</p>
+            <p className="text-muted-foreground">Losses</p>
+          </div>
+          <div className="rounded-md border border-border p-2">
+            <p className="font-semibold">{analytics.breakEvenTrades}</p>
+            <p className="text-muted-foreground">Break Even</p>
+          </div>
+        </div>
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 export function BrokerDetailsPanel({ account, isSyncing, onSync, onClose }: Props) {
   const { disconnectAccount, updateAccount, toggleAutoSync } = useBrokerAccountsFull();
   const { data: syncLogs = [], isLoading: logsLoading } = useSyncLogs(account.id);
+  const { data: summaryData, loading: summaryLoading, fetchSummary } = useAccountSummary();
+  const [symbolFilter, setSymbolFilter] = useState("");
   const isConnected = account.connection_status === "connected";
   const isAutoSync = account.auto_sync_enabled ?? true;
+  const hasMeta = !!(account as any).meta_api_account_id;
 
   const handleFreqChange = (val: string) => {
     const freq = parseInt(val);
     const nextSync = new Date(Date.now() + freq * 60_000).toISOString();
     updateAccount.mutate({ id: account.id, sync_frequency: freq, next_sync_at: nextSync } as any);
+  };
+
+  const handleFetchSummary = () => {
+    fetchSummary({
+      broker_account_id: account.id,
+      symbol: symbolFilter || undefined,
+    });
   };
 
   const nextSyncLabel = (() => {
@@ -120,6 +253,37 @@ export function BrokerDetailsPanel({ account, isSyncing, onSync, onClose }: Prop
         )}
 
         <Separator />
+
+        {/* Account Summary Section */}
+        {hasMeta && (
+          <>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Account Summary</h4>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Filter by symbol (optional)"
+                  value={symbolFilter}
+                  onChange={(e) => setSymbolFilter(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={handleFetchSummary}
+                  disabled={summaryLoading || account.connection_status === "disconnected"}
+                >
+                  {summaryLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
+                  <span className="ml-1">Fetch</span>
+                </Button>
+              </div>
+              {summaryData && <AccountSummaryView data={summaryData} />}
+            </div>
+            <Separator />
+          </>
+        )}
 
         {/* Auto-sync toggle */}
         <div className="flex items-center justify-between">
