@@ -1,5 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { useTrades } from "@/hooks/use-api";
+import { useTrades, useBrokerAccounts } from "@/hooks/use-api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricCards } from "@/components/dashboard/MetricCards";
 import { EquityCurveChart } from "@/components/dashboard/EquityCurveChart";
@@ -17,9 +17,15 @@ import { useMemo } from "react";
 export default function Dashboard() {
   const { user } = useAuth();
   const { trades, loading } = useTrades();
+  const { accounts } = useBrokerAccounts();
 
-  const metrics = useMemo(() => computeMetrics(trades), [trades]);
-  const equityData = useMemo(() => computeEquityCurve(trades), [trades]);
+  const startingCapital = useMemo(() => {
+    const totalBalance = accounts.reduce((sum, a) => sum + (a.balance ?? 0), 0);
+    return totalBalance;
+  }, [accounts]);
+
+  const metrics = useMemo(() => computeMetrics(trades, startingCapital), [trades, startingCapital]);
+  const equityData = useMemo(() => computeEquityCurve(trades, startingCapital), [trades, startingCapital]);
   const monthlyData = useMemo(() => computeMonthlyPerformance(trades), [trades]);
   const quickStats = useMemo(() => computeQuickStats(trades), [trades]);
 
