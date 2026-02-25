@@ -1,4 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { fetch as nodeFetch } from "npm:undici@^6";
+
+// Use Node.js-based fetch for MetaAPI to avoid Deno TLS issues
+function metaFetch(url: string, init?: RequestInit): Promise<Response> {
+  return nodeFetch(url, init as any) as unknown as Promise<Response>;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,7 +31,7 @@ async function provisionAccount(
   server: string,
   platform: string = "mt5"
 ): Promise<{ id: string } | { error: string }> {
-  const res = await fetch(`${META_API_PROVISIONING}/users/current/accounts`, {
+  const res = await metaFetch(`${META_API_PROVISIONING}/users/current/accounts`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "auth-token": token },
     body: JSON.stringify({ name, login, password, server, platform, type: "cloud", magic: 0 }),
@@ -37,13 +43,13 @@ async function provisionAccount(
 
 // ── Deploy and wait for account to connect ─────────────────────
 async function deployAccount(token: string, accountId: string): Promise<boolean> {
-  await fetch(`${META_API_PROVISIONING}/users/current/accounts/${accountId}/deploy`, {
+  await metaFetch(`${META_API_PROVISIONING}/users/current/accounts/${accountId}/deploy`, {
     method: "POST",
     headers: { "auth-token": token },
   });
   for (let i = 0; i < 12; i++) {
     await new Promise((r) => setTimeout(r, 5000));
-    const res = await fetch(`${META_API_PROVISIONING}/users/current/accounts/${accountId}`, {
+    const res = await metaFetch(`${META_API_PROVISIONING}/users/current/accounts/${accountId}`, {
       headers: { "auth-token": token },
     });
     const data = await res.json();
@@ -71,7 +77,7 @@ async function fetchAccountInfo(
   token: string,
   accountId: string
 ): Promise<AccountInfo | null> {
-  const res = await fetch(
+  const res = await metaFetch(
     `${META_API_BASE}/users/current/accounts/${accountId}/account-information`,
     { headers: { "auth-token": token } }
   );
@@ -114,7 +120,7 @@ async function fetchOpenPositions(
   token: string,
   accountId: string
 ): Promise<OpenPosition[]> {
-  const res = await fetch(
+  const res = await metaFetch(
     `${META_API_BASE}/users/current/accounts/${accountId}/positions`,
     { headers: { "auth-token": token } }
   );
@@ -161,7 +167,7 @@ async function fetchDeals(
   endTime: string
 ): Promise<HistoricalDeal[]> {
   const params = new URLSearchParams({ startTime, endTime, offset: "0", limit: "1000" });
-  const res = await fetch(
+  const res = await metaFetch(
     `${META_API_BASE}/users/current/accounts/${accountId}/history-deals/time?${params}`,
     { headers: { "auth-token": token } }
   );
