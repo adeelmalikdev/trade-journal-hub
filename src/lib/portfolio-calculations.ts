@@ -37,14 +37,12 @@ export interface QuickStats {
   consecutiveLosses: number;
 }
 
-const STARTING_CAPITAL = 50000;
-
-export function computeMetrics(trades: Trade[]): PortfolioMetrics {
+export function computeMetrics(trades: Trade[], startingCapital = 0): PortfolioMetrics {
   const closed = trades.filter((t) => t.pnl != null);
   const totalTrades = closed.length;
   if (totalTrades === 0) {
     return {
-      totalBalance: STARTING_CAPITAL,
+      totalBalance: startingCapital,
       totalPnL: 0,
       winRate: 0,
       profitFactor: 0,
@@ -74,9 +72,9 @@ export function computeMetrics(trades: Trade[]): PortfolioMetrics {
   const sorted = [...closed].sort(
     (a, b) => new Date(a.exit_time ?? a.created_at!).getTime() - new Date(b.exit_time ?? b.created_at!).getTime()
   );
-  let peak = STARTING_CAPITAL;
+  let peak = startingCapital;
   let maxDD = 0;
-  let equity = STARTING_CAPITAL;
+  let equity = startingCapital;
   for (const t of sorted) {
     equity += t.pnl!;
     if (equity > peak) peak = equity;
@@ -85,7 +83,7 @@ export function computeMetrics(trades: Trade[]): PortfolioMetrics {
   }
 
   return {
-    totalBalance: STARTING_CAPITAL + totalPnL,
+    totalBalance: startingCapital + totalPnL,
     totalPnL,
     winRate,
     profitFactor,
@@ -98,14 +96,14 @@ export function computeMetrics(trades: Trade[]): PortfolioMetrics {
   };
 }
 
-export function computeEquityCurve(trades: Trade[]): EquityPoint[] {
+export function computeEquityCurve(trades: Trade[], startingCapital = 0): EquityPoint[] {
   const closed = trades.filter((t) => t.pnl != null);
   const sorted = [...closed].sort(
     (a, b) => new Date(a.exit_time ?? a.created_at!).getTime() - new Date(b.exit_time ?? b.created_at!).getTime()
   );
 
-  const points: EquityPoint[] = [{ date: "Start", balance: STARTING_CAPITAL }];
-  let balance = STARTING_CAPITAL;
+  const points: EquityPoint[] = [{ date: "Start", balance: startingCapital }];
+  let balance = startingCapital;
   for (const t of sorted) {
     balance += t.pnl!;
     const d = t.exit_time ?? t.created_at!;

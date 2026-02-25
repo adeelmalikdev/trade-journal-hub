@@ -82,12 +82,22 @@ export function useTrades() {
   const query = useQuery({
     queryKey: key,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("trades")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
+      const allTrades: any[] = [];
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("trades")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allTrades.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      return allTrades;
     },
     staleTime: STALE_TIME,
     enabled: !!user,
