@@ -73,6 +73,7 @@ export type Database = {
           broker_account_id: string | null
           created_at: string | null
           direction: string | null
+          emotion: string | null
           entry_price: number | null
           entry_time: string | null
           exit_price: number | null
@@ -83,6 +84,7 @@ export type Database = {
           position_size: number | null
           strategy: string | null
           symbol: string | null
+          tags: string[] | null
           total_fees: number | null
           user_id: string
         }
@@ -90,6 +92,7 @@ export type Database = {
           broker_account_id?: string | null
           created_at?: string | null
           direction?: string | null
+          emotion?: string | null
           entry_price?: number | null
           entry_time?: string | null
           exit_price?: number | null
@@ -100,6 +103,7 @@ export type Database = {
           position_size?: number | null
           strategy?: string | null
           symbol?: string | null
+          tags?: string[] | null
           total_fees?: number | null
           user_id: string
         }
@@ -107,6 +111,7 @@ export type Database = {
           broker_account_id?: string | null
           created_at?: string | null
           direction?: string | null
+          emotion?: string | null
           entry_price?: number | null
           entry_time?: string | null
           exit_price?: number | null
@@ -117,6 +122,7 @@ export type Database = {
           position_size?: number | null
           strategy?: string | null
           symbol?: string | null
+          tags?: string[] | null
           total_fees?: number | null
           user_id?: string
         }
