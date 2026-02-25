@@ -22,12 +22,14 @@ export type Database = {
           auto_sync_enabled: boolean | null
           balance: number | null
           broker_name: string
+          broker_server: string | null
           connection_status: string
           created_at: string | null
           id: string
           is_active: boolean | null
           last_sync_at: string | null
           last_sync_error: string | null
+          meta_api_account_id: string | null
           next_sync_at: string | null
           retry_count: number | null
           sync_frequency: number
@@ -41,12 +43,14 @@ export type Database = {
           auto_sync_enabled?: boolean | null
           balance?: number | null
           broker_name: string
+          broker_server?: string | null
           connection_status?: string
           created_at?: string | null
           id?: string
           is_active?: boolean | null
           last_sync_at?: string | null
           last_sync_error?: string | null
+          meta_api_account_id?: string | null
           next_sync_at?: string | null
           retry_count?: number | null
           sync_frequency?: number
@@ -60,12 +64,14 @@ export type Database = {
           auto_sync_enabled?: boolean | null
           balance?: number | null
           broker_name?: string
+          broker_server?: string | null
           connection_status?: string
           created_at?: string | null
           id?: string
           is_active?: boolean | null
           last_sync_at?: string | null
           last_sync_error?: string | null
+          meta_api_account_id?: string | null
           next_sync_at?: string | null
           retry_count?: number | null
           sync_frequency?: number
